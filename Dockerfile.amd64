@@ -1,0 +1,52 @@
+# Creates the base image since downloading dependencies take a lot of time
+FROM python:3.12-slim
+ARG TARGETPLATFORM=linux/amd64
+LABEL maintainer="hanisaf@uga.edu"
+RUN apt-get update && apt-get install -y build-essential chromium chromium-driver
+COPY requirements.txt /
+RUN python -m pip install --no-cache-dir -r requirements.txt
+RUN python -m textblob.download_corpora
+RUN python -m spacy download en_core_web_sm
+
+# Add Debian Bookworm repo (for OpenJDK 17)
+RUN echo "deb http://deb.debian.org/debian bookworm main" > /etc/apt/sources.list.d/bookworm.list
+
+# Pin Bookworm lower priority except when explicitly requested
+RUN printf "Package: *\nPin: release n=bookworm\nPin-Priority: 100\n" > /etc/apt/preferences.d/bookworm
+
+# Install OpenJDK 17 specifically from Bookworm
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends -t bookworm openjdk-17-jdk \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV PATH="$JAVA_HOME/bin:$PATH"
+ENV SPARK_LOCAL_IP=127.0.0.1 \
+    SPARK_LOCAL_HOSTNAME=localhost \
+    PYSPARK_SUBMIT_ARGS="--master local[1] \
+    --conf spark.driver.host=127.0.0.1 \
+    --conf spark.driver.bindAddress=127.0.0.1 \
+    --conf spark.local.ip=127.0.0.1 \
+    --conf spark.driver.extraJavaOptions=-Djava.net.preferIPv4Stack=true \
+    pyspark-shell"
+
+# Install PySpark 4
+RUN pip install --no-cache-dir "pyspark>=4.0.0"
+
+# Force Spark to download dependencies at build time
+RUN python -c "\
+from pyspark.sql import SparkSession; \
+SparkSession.builder \
+    .appName('preload') \
+    .config('spark.jars.packages', 'org.apache.hadoop:hadoop-aws:3.5.0') \
+    .getOrCreate().stop()"
+
+COPY . /app
+WORKDIR /app
+# copy ipython config into a temporary location and move it to the IPython
+# profile directory discovered at build time
+COPY ipython_config.py /tmp/ipython_config.py
+RUN dest=$(ipython profile locate) \
+	&& mkdir -p "$dest" \
+	&& cp /tmp/ipython_config.py "$dest/ipython_config.py" \
+	&& rm /tmp/ipython_config.py || true
