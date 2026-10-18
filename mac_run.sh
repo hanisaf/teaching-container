@@ -20,6 +20,7 @@ docker run --platform "${PLATFORM}" --rm -it \
 	-p 4041:4041 \
 	-p 4042:4042 \
 	-p 4043:4043 \
+	-p 7777:7777 \
 	-v "$PWD":/app/work \
 	-e SPARK_LOCAL_IP=0.0.0.0 \
 	-e SPARK_LOCAL_HOSTNAME=localhost \
