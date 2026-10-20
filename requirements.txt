@@ -36,3 +36,4 @@ langchain_community
 docarray
 langchain_experimental
 langchain_openai
+seaborn

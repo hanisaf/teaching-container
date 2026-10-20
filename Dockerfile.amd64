@@ -2,8 +2,35 @@
 FROM python:3.12-slim
 ARG TARGETPLATFORM=linux/amd64
 LABEL maintainer="hanisaf@uga.edu"
+
 RUN apt-get update && apt-get install -y build-essential chromium chromium-driver netcat-traditional
-COPY requirements.txt /
+
+# Build XQilla (XQuery engine) from source, needed by python-simplexquery.
+# Debian dropped libxqilla-dev after bullseye, so compile it against the system Xerces-C.
+RUN apt-get update && apt-get install -y --no-install-recommends curl autotools-dev libxerces-c-dev \
+ && curl -fsSL -o /tmp/xqilla.tar.gz https://downloads.sourceforge.net/project/xqilla/XQilla-2.3.4.tar.gz \
+ && tar -xzf /tmp/xqilla.tar.gz -C /tmp \
+ && cd /tmp/XQilla-2.3.4 \
+ && find . -name config.guess -exec cp /usr/share/misc/config.guess {} \; \
+ && find . -name config.sub -exec cp /usr/share/misc/config.sub {} \; \
+ && ./configure --with-xerces=/usr --prefix=/usr/local CXXFLAGS="-O2 -std=gnu++14 -w" \
+ && make -j"$(nproc)" \
+ && make install \
+ && ldconfig \
+ && cd / && rm -rf /tmp/XQilla-2.3.4 /tmp/xqilla.tar.gz /var/lib/apt/lists/*
+
+# Install python-simplexquery, patched to allocate with malloc/free instead of
+# PyMem_Malloc/PyMem_Free: its C++ operator new/delete overrides otherwise mix
+# allocators and crash with "free(): invalid size" (e.g. under IPython/Jupyter).
+RUN pip download --no-deps --no-binary :all: --no-cache-dir python-simplexquery==1.0.5.3 -d /tmp/sxq \
+ && cd /tmp/sxq && python -m zipfile -e python-simplexquery-1.0.5.3.zip . \
+ && cd python-simplexquery-1.0.5.3 \
+ && sed -i 's/&PyMem_Malloc/\&malloc/; s/&PyMem_Free/\&free/' xquery.c \
+ && grep -q 'return &malloc' xquery.c && grep -q 'return &free' xquery.c \
+ && pip install --no-cache-dir . \
+ && cd / && rm -rf /tmp/sxq
+
+ COPY requirements.txt /
 RUN python -m pip install --no-cache-dir -r requirements.txt
 RUN python -m textblob.download_corpora
 RUN python -m spacy download en_core_web_sm
