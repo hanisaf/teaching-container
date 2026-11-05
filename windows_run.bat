@@ -1,6 +1,9 @@
 @echo off
-set CONTAINER_NAME=notebook
-for /f %%i in ('powershell -Command "[int64]([datetimeoffset]::Now.ToUnixTimeSeconds())"') do set CONTAINER_NAME=notebook_%%i
+set CONTAINER_NAME=teaching_container
+REM Clean up leftovers from earlier runs (closing the window instead of Ctrl+C leaves the
+REM container running, holding port 8888), including old notebook_<timestamp> containers
+docker rm -f %CONTAINER_NAME% >nul 2>&1
+for /f %%n in ('docker ps -a --format "{{.Names}}" ^| findstr /r /x "notebook_[0-9]*"') do docker rm -f %%n >nul 2>&1
 
 echo ===================================================
 echo Container is starting up...
@@ -18,7 +21,7 @@ docker run --platform linux/amd64 --rm -it ^
     -p 4042:4042 ^
     -p 4043:4043 ^
     -p 7777:7777 ^
-    -v "%CD%":/app/work ^
+    -v "%CD%":/user/work ^
     -e SPARK_LOCAL_IP=0.0.0.0 ^
     -e SPARK_LOCAL_HOSTNAME=localhost ^
     -e SOCKET_HOST=host.docker.internal ^
@@ -27,3 +30,6 @@ docker run --platform linux/amd64 --rm -it ^
     -e PYSPARK_SUBMIT_ARGS="--master local[*] --conf spark.ui.enabled=true --conf spark.ui.port=4040 --conf spark.driver.host=0.0.0.0 --conf spark.driver.bindAddress=0.0.0.0 --conf spark.local.ip=0.0.0.0 --conf spark.driver.extraJavaOptions=-Djava.net.preferIPv4Stack=true pyspark-shell" ^
     hanisaf/teaching_container_amd64 ^
     jupyter notebook --allow-root --ip 0.0.0.0
+
+REM In case the container is still around after docker run returns
+docker rm -f %CONTAINER_NAME% >nul 2>&1

@@ -1,0 +1,4 @@
+# The image only needs these two files; keep the build context tiny.
+*
+!requirements.txt
+!ipython_config.py

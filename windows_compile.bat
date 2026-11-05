@@ -1,1 +1,1 @@
-docker build --platform linux/amd64 -t hanisaf/teaching_container_amd64 -f Dockerfile.amd64 .
+docker build --platform linux/amd64 -t hanisaf/teaching_container_amd64 -f Dockerfile .
